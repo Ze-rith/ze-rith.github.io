@@ -147,7 +147,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .nav-item {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -173,6 +173,7 @@ a { color: var(--accent); text-decoration: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+  min-width: 0;
 }
 .nav-progress {
   font-family: var(--mono);
@@ -350,6 +351,8 @@ a { color: var(--accent); text-decoration: none; }
   margin: 0 0 10px;
   line-height: 1.25;
   color: var(--text);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 .stage-progress-bar {
   height: 4px;
