@@ -251,6 +251,448 @@ A안 또는 C안 모두 OK</pre><ul class="tasks"><li class="task"><label><input
       <div class="footer-quote">"8년 뒤의 너를 위해, 오늘 한 가지부터."</div>
       <div>© 2026 · zerith · 사이버 + 강력 2트랙 · 화이팅 💪</div>
     </footer>
+    <!-- ==================== GIST 동기화 UI ==================== -->
+<style>
+.sync-fab {
+  position: fixed; left: 24px; bottom: 24px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); padding: 10px 14px;
+  border-radius: 999px; font-family: var(--display);
+  font-size: 12px; cursor: pointer; z-index: 100;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: all .15s; font-weight: 500;
+}
+.sync-fab:hover { border-color: var(--accent); color: var(--accent); }
+.sync-fab .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-mute); transition: background .3s;
+}
+.sync-fab.synced .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.sync-fab.syncing .dot { background: var(--gold); animation: pulse 1s ease-in-out infinite; }
+.sync-fab.error .dot { background: var(--warn); }
+.sync-fab.unconfigured .dot { background: var(--text-mute); }
+
+.sync-modal-backdrop {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.7); z-index: 200;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.sync-modal-backdrop.show { display: flex; }
+.sync-modal {
+  background: var(--panel); border: 1px solid var(--line-2);
+  border-radius: 14px; padding: 24px; max-width: 480px; width: 100%;
+  box-shadow: var(--shadow); max-height: 90vh; overflow-y: auto;
+}
+.sync-modal h3 {
+  margin: 0 0 6px; font-size: 18px; font-weight: 800;
+  color: var(--text); letter-spacing: -.01em;
+}
+.sync-modal .sub {
+  font-size: 12px; color: var(--text-dim); margin: 0 0 18px;
+  font-family: var(--mono);
+}
+.sync-field { margin-bottom: 14px; }
+.sync-field label {
+  display: block; font-size: 11px; color: var(--accent);
+  margin-bottom: 6px; font-family: var(--mono);
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.sync-field input {
+  width: 100%; background: var(--bg-3); border: 1px solid var(--line);
+  color: var(--text); font: inherit; font-size: 13px;
+  padding: 10px 12px; border-radius: 8px; font-family: var(--mono);
+}
+.sync-field input:focus { outline: none; border-color: var(--accent); }
+.sync-hint {
+  font-size: 11px; color: var(--text-mute); margin-top: 4px; line-height: 1.5;
+}
+.sync-actions {
+  display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap;
+}
+.sync-btn {
+  background: var(--bg-3); border: 1px solid var(--line);
+  color: var(--text); padding: 9px 14px; border-radius: 8px;
+  font: inherit; font-size: 13px; cursor: pointer;
+  transition: all .15s;
+}
+.sync-btn:hover { border-color: var(--line-2); }
+.sync-btn.primary {
+  background: var(--accent); color: #001318;
+  border-color: var(--accent); font-weight: 600;
+}
+.sync-btn.primary:hover { background: var(--accent-2); }
+.sync-btn.danger { color: var(--warn); }
+.sync-btn.danger:hover { border-color: var(--warn); }
+.sync-status {
+  margin-top: 16px; padding: 10px 12px; border-radius: 8px;
+  background: var(--bg-3); font-size: 12px; color: var(--text-dim);
+  font-family: var(--mono); display: none;
+}
+.sync-status.show { display: block; }
+.sync-status.ok { color: var(--ok); }
+.sync-status.err { color: var(--warn); }
+.sync-divider { height: 1px; background: var(--line); margin: 18px 0; }
+.sync-toast {
+  position: fixed; bottom: 80px; left: 24px;
+  background: var(--bg-3); color: var(--text);
+  border: 1px solid var(--line-2); padding: 10px 14px;
+  border-radius: 8px; font-size: 12px; font-family: var(--mono);
+  z-index: 150; opacity: 0; transform: translateY(8px);
+  transition: all .25s; pointer-events: none;
+}
+.sync-toast.show { opacity: 1; transform: translateY(0); }
+@media (max-width: 900px) {
+  .sync-fab { left: 16px; bottom: 70px; }
+  .sync-toast { bottom: 130px; left: 16px; }
+}
+</style>
+
+<button class="sync-fab unconfigured" id="syncFab" title="클라우드 동기화">
+  <span class="dot"></span>
+  <span id="syncFabLabel">동기화</span>
+</button>
+
+<div class="sync-modal-backdrop" id="syncModalBackdrop">
+  <div class="sync-modal">
+    <h3>☁️ 클라우드 동기화 (GitHub Gist)</h3>
+    <p class="sub">기기 4개 어디서든 같은 진행률</p>
+
+    <div class="sync-field">
+      <label>GitHub Personal Access Token</label>
+      <input type="password" id="syncToken" placeholder="github_pat_... 또는 ghp_..." autocomplete="off">
+      <div class="sync-hint">Settings → Developer settings → Tokens. Gists 권한 필요. 이 브라우저에만 저장됨.</div>
+    </div>
+
+    <div class="sync-field">
+      <label>Gist ID</label>
+      <input type="text" id="syncGistId" placeholder="d90e1efb365ef9523998e173db16e2ff" autocomplete="off">
+      <div class="sync-hint">Gist URL 끝의 영숫자 부분</div>
+    </div>
+
+    <div class="sync-actions">
+      <button class="sync-btn primary" id="syncSaveBtn">저장 + 첫 동기화</button>
+      <button class="sync-btn" id="syncPullBtn">서버에서 불러오기</button>
+      <button class="sync-btn" id="syncPushBtn">서버에 덮어쓰기</button>
+      <button class="sync-btn" id="syncCloseBtn">닫기</button>
+    </div>
+
+    <div class="sync-divider"></div>
+    <div class="sync-actions">
+      <button class="sync-btn" id="syncExportBtn">📥 JSON 백업 다운로드</button>
+      <button class="sync-btn" id="syncImportBtn">📤 JSON 가져오기</button>
+      <input type="file" id="syncImportFile" accept=".json" style="display:none">
+      <button class="sync-btn danger" id="syncClearBtn">설정 삭제</button>
+    </div>
+
+    <div class="sync-status" id="syncStatus"></div>
+  </div>
+</div>
+
+<div class="sync-toast" id="syncToast"></div>
+
+<script>
+(function() {
+  const SYNC_KEY = "zerith-sync-config-v1";
+  const DATA_KEY = "zerith-roadmap-v1";
+  const FILENAME = "zerith-roadmap.json";
+
+  const fab = document.getElementById('syncFab');
+  const fabLabel = document.getElementById('syncFabLabel');
+  const modal = document.getElementById('syncModalBackdrop');
+  const tokenInput = document.getElementById('syncToken');
+  const gistInput = document.getElementById('syncGistId');
+  const status = document.getElementById('syncStatus');
+  const toast = document.getElementById('syncToast');
+
+  let config = loadConfig();
+  let pushTimer = null;
+  let lastPushedAt = null;
+
+  function loadConfig() {
+    try { return JSON.parse(localStorage.getItem(SYNC_KEY) || "{}"); }
+    catch (e) { return {}; }
+  }
+  function saveConfig(c) { localStorage.setItem(SYNC_KEY, JSON.stringify(c)); }
+
+  function setStatus(msg, kind) {
+    status.textContent = msg;
+    status.className = 'sync-status show ' + (kind || '');
+  }
+  function clearStatus() { status.className = 'sync-status'; }
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+  function setFabState(state, label) {
+    fab.classList.remove('unconfigured', 'synced', 'syncing', 'error');
+    fab.classList.add(state);
+    if (label) fabLabel.textContent = label;
+  }
+
+  function timeAgo(date) {
+    if (!date) return '';
+    const s = Math.round((Date.now() - date) / 1000);
+    if (s < 5) return '방금';
+    if (s < 60) return s + '초 전';
+    if (s < 3600) return Math.round(s / 60) + '분 전';
+    if (s < 86400) return Math.round(s / 3600) + '시간 전';
+    return Math.round(s / 86400) + '일 전';
+  }
+  function refreshFabLabel() {
+    if (!config.token || !config.gistId) {
+      setFabState('unconfigured', '동기화 설정');
+    } else if (lastPushedAt) {
+      setFabState('synced', '동기화 · ' + timeAgo(lastPushedAt));
+    } else {
+      setFabState('synced', '동기화');
+    }
+  }
+  setInterval(refreshFabLabel, 30000);
+
+  async function gistApi(method, body) {
+    if (!config.token || !config.gistId) throw new Error('설정 필요');
+    const opts = {
+      method,
+      headers: {
+        'Authorization': 'Bearer ' + config.token,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    };
+    if (body) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch('https://api.github.com/gists/' + config.gistId, opts);
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + t.slice(0, 200));
+    }
+    return r.json();
+  }
+
+  async function pullFromGist() {
+    setFabState('syncing', '불러오는 중...');
+    const data = await gistApi('GET');
+    const file = data.files && data.files[FILENAME];
+    if (!file) throw new Error("'" + FILENAME + "' 파일을 Gist에서 못 찾음");
+    const raw = file.content || '{}';
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch(e) { throw new Error('Gist 데이터가 JSON이 아님'); }
+    localStorage.setItem(DATA_KEY, JSON.stringify(parsed));
+    lastPushedAt = Date.now();
+    refreshFabLabel();
+    return parsed;
+  }
+
+  async function pushToGist() {
+    if (!config.token || !config.gistId) return;
+    setFabState('syncing', '저장 중...');
+    const data = localStorage.getItem(DATA_KEY) || '{}';
+    const body = { files: {} };
+    body.files[FILENAME] = { content: data };
+    await gistApi('PATCH', body);
+    lastPushedAt = Date.now();
+    refreshFabLabel();
+  }
+
+  function schedulePush() {
+    if (!config.token || !config.gistId) return;
+    setFabState('syncing', '저장 대기...');
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(async () => {
+      try {
+        await pushToGist();
+        showToast('☁️ 저장됨');
+      } catch (e) {
+        setFabState('error', '저장 실패');
+        showToast('⚠️ 저장 실패: ' + e.message.slice(0, 60));
+        console.error(e);
+      }
+    }, 3000);
+  }
+
+  // 기존 checkbox change 이벤트에 hook 걸기
+  document.addEventListener('change', (e) => {
+    if (e.target.matches('input[type="checkbox"][data-id]')) {
+      schedulePush();
+    }
+  }, true);
+
+  // FAB 클릭 → 모달 열기
+  fab.addEventListener('click', () => {
+    tokenInput.value = config.token || '';
+    gistInput.value = config.gistId || '';
+    clearStatus();
+    modal.classList.add('show');
+  });
+  document.getElementById('syncCloseBtn').addEventListener('click', () => {
+    modal.classList.remove('show');
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.remove('show');
+  });
+
+  // 저장 + 첫 동기화 (스마트 머지: 양쪽 데이터 합침, 둘 다 체크돼있으면 체크 유지)
+  document.getElementById('syncSaveBtn').addEventListener('click', async () => {
+    const token = tokenInput.value.trim();
+    const gistId = gistInput.value.trim();
+    if (!token || !gistId) { setStatus('토큰과 Gist ID 둘 다 입력 필요', 'err'); return; }
+    config = { token, gistId };
+    saveConfig(config);
+    setStatus('연결 확인 중...', '');
+    try {
+      const remote = await gistApi('GET');
+      const file = remote.files && remote.files[FILENAME];
+      const remoteData = file && file.content ? JSON.parse(file.content) : {};
+      const local = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
+      // 스마트 머지: 체크된 것만 살림 (OR 연산)
+      const merged = Object.assign({}, remoteData, local);
+      for (const k in remoteData) merged[k] = true;
+      for (const k in local) if (local[k]) merged[k] = true;
+      localStorage.setItem(DATA_KEY, JSON.stringify(merged));
+      // 화면 새로고침
+      Object.keys(merged).forEach(id => {
+        const cb = document.querySelector('input[type="checkbox"][data-id="' + id + '"]');
+        if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', {bubbles:true})); }
+      });
+      await pushToGist();
+      setStatus('✓ 연결 완료 + 양쪽 합쳐서 저장됨. 새로고침하면 적용됨.', 'ok');
+      showToast('✓ 동기화 완료');
+      setTimeout(() => location.reload(), 1500);
+    } catch (e) {
+      setStatus('✗ 실패: ' + e.message, 'err');
+      setFabState('error', '연결 실패');
+    }
+  });
+
+  // 서버 데이터로 덮어쓰기 (위험!)
+  document.getElementById('syncPullBtn').addEventListener('click', async () => {
+    if (!confirm('서버 데이터로 이 기기의 체크 상태를 덮어씁니다. 진행할까요?')) return;
+    try {
+      await pullFromGist();
+      setStatus('✓ 불러옴. 새로고침합니다.', 'ok');
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      setStatus('✗ 실패: ' + e.message, 'err');
+    }
+  });
+
+  // 로컬 데이터로 서버 덮어쓰기
+  document.getElementById('syncPushBtn').addEventListener('click', async () => {
+    if (!confirm('이 기기의 체크 상태로 서버를 덮어씁니다. 진행할까요?')) return;
+    try {
+      await pushToGist();
+      setStatus('✓ 서버에 저장됨', 'ok');
+      showToast('☁️ 저장됨');
+    } catch (e) {
+      setStatus('✗ 실패: ' + e.message, 'err');
+    }
+  });
+
+  // 백업 다운로드
+  document.getElementById('syncExportBtn').addEventListener('click', () => {
+    const data = localStorage.getItem(DATA_KEY) || '{}';
+    const blob = new Blob([data], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const today = new Date().toISOString().slice(0,10);
+    a.download = 'zerith-roadmap-backup-' + today + '.json';
+    a.click();
+    setStatus('✓ 다운로드 시작', 'ok');
+  });
+
+  // 가져오기
+  document.getElementById('syncImportBtn').addEventListener('click', () => {
+    document.getElementById('syncImportFile').click();
+  });
+  document.getElementById('syncImportFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!confirm('파일 내용으로 현재 체크 상태를 덮어씁니다. 진행?')) return;
+        localStorage.setItem(DATA_KEY, JSON.stringify(data));
+        setStatus('✓ 가져옴. 새로고침합니다.', 'ok');
+        setTimeout(() => location.reload(), 800);
+      } catch (err) {
+        setStatus('✗ JSON 파싱 실패', 'err');
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // 설정 삭제
+  document.getElementById('syncClearBtn').addEventListener('click', () => {
+    if (!confirm('동기화 설정(토큰+Gist ID)을 이 기기에서 삭제합니다. 체크 상태는 그대로 남습니다.')) return;
+    localStorage.removeItem(SYNC_KEY);
+    config = {};
+    tokenInput.value = '';
+    gistInput.value = '';
+    setStatus('✓ 설정 삭제됨', 'ok');
+    refreshFabLabel();
+  });
+
+  // 페이지 진입 시: 설정 있으면 서버에서 자동 pull (충돌은 OR 머지)
+  (async function autoSync() {
+    refreshFabLabel();
+    if (!config.token || !config.gistId) return;
+    try {
+      setFabState('syncing', '동기화 중...');
+      const data = await gistApi('GET');
+      const file = data.files && data.files[FILENAME];
+      if (!file) { setFabState('synced', '동기화'); return; }
+      const remoteData = JSON.parse(file.content || '{}');
+      const local = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
+      // OR 머지: 어느 한쪽이라도 체크돼있으면 체크 유지
+      const merged = {};
+      for (const k in remoteData) if (remoteData[k]) merged[k] = true;
+      for (const k in local) if (local[k]) merged[k] = true;
+      const remoteStr = JSON.stringify(remoteData);
+      const localStr = JSON.stringify(local);
+      const mergedStr = JSON.stringify(merged);
+      if (mergedStr === remoteStr && mergedStr === localStr) {
+        // 완전 동일
+        lastPushedAt = Date.now();
+        refreshFabLabel();
+        return;
+      }
+      // 머지된 결과를 로컬에 반영
+      localStorage.setItem(DATA_KEY, mergedStr);
+      // 화면의 체크박스도 업데이트
+      let changed = 0;
+      document.querySelectorAll('input[type="checkbox"][data-id]').forEach(cb => {
+        const id = cb.dataset.id;
+        const should = !!merged[id];
+        if (cb.checked !== should) { cb.checked = should; changed++; }
+      });
+      if (changed > 0) {
+        // 진행률 업데이트
+        if (typeof updateProgress === 'function') updateProgress();
+        showToast('☁️ ' + changed + '개 항목 동기화됨');
+      }
+      // 서버가 머지 결과랑 다르면 서버에도 푸시
+      if (mergedStr !== remoteStr) {
+        await pushToGist();
+      } else {
+        lastPushedAt = Date.now();
+        refreshFabLabel();
+      }
+    } catch (e) {
+      console.error('자동 동기화 실패:', e);
+      setFabState('error', '동기화 실패');
+      showToast('⚠️ 자동 동기화 실패. 클릭해서 확인');
+    }
+  })();
+})();
+</script>
+<!-- ==================== /GIST 동기화 ==================== -->
   </main>
 </div>
 
@@ -313,6 +755,7 @@ function updateProgress() {
     if (prog) prog.textContent = `${done}/${total}`;
   });
 }
+window.updateProgress = updateProgress;
 
 allCheckboxes.forEach(cb => {
   cb.addEventListener('change', () => {
